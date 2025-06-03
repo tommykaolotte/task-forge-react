@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { Todo, TodoCreate, TodoUpdate, TodoListResponse, TodoStats, FilterParams } from '../types/todo';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://finixai.mywire.org:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
