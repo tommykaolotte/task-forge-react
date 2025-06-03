@@ -1,10 +1,10 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, Sun, Moon, Search } from 'lucide-react';
+import { Plus, Sun, Moon, Search, Settings } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTodos } from '../contexts/TodoContext';
+import { Link } from 'react-router-dom';
 
 interface HeaderProps {
   onCreateTodo: () => void;
@@ -50,6 +50,17 @@ export const Header: React.FC<HeaderProps> = ({ onCreateTodo }) => {
               className="pl-10 w-64"
             />
           </div>
+
+          <Link to="/api-test">
+            <Button
+              variant="outline"
+              size="sm"
+              className="p-2"
+              title="Test API Connection"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          </Link>
 
           <Button
             variant="outline"

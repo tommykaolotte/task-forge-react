@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import { Todo, TodoCreate, TodoUpdate, FilterParams, ViewMode } from '../types/todo';
 import { todoApi } from '../services/api';
 import { useToast } from '../hooks/use-toast';
@@ -17,6 +16,7 @@ interface TodoState {
     total: number;
     total_pages: number;
   };
+  initialized: boolean;
 }
 
 type TodoAction =
@@ -29,7 +29,8 @@ type TodoAction =
   | { type: 'SET_FILTERS'; payload: FilterParams }
   | { type: 'SET_VIEW_MODE'; payload: ViewMode }
   | { type: 'SET_SELECTED_TODOS'; payload: string[] }
-  | { type: 'TOGGLE_TODO_SELECTION'; payload: string };
+  | { type: 'TOGGLE_TODO_SELECTION'; payload: string }
+  | { type: 'SET_INITIALIZED'; payload: boolean };
 
 const initialState: TodoState = {
   todos: [],
@@ -43,7 +44,8 @@ const initialState: TodoState = {
     size: 10,
     total: 0,
     total_pages: 0
-  }
+  },
+  initialized: false
 };
 
 const todoReducer = (state: TodoState, action: TodoAction): TodoState => {
@@ -93,6 +95,8 @@ const todoReducer = (state: TodoState, action: TodoAction): TodoState => {
           ? state.selectedTodos.filter(id => id !== action.payload)
           : [...state.selectedTodos, action.payload]
       };
+    case 'SET_INITIALIZED':
+      return { ...state, initialized: action.payload };
     default:
       return state;
   }
@@ -125,10 +129,16 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [state, dispatch] = useReducer(todoReducer, initialState);
   const { toast } = useToast();
 
-  const fetchTodos = useCallback(async () => {
+  // Stable fetchTodos function without dependency cycle
+  const fetchTodos = useCallback(async (customFilters?: FilterParams) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
-      const response = await todoApi.getTodos(state.filters);
+      const filtersToUse = customFilters || state.filters;
+      console.log('Fetching todos with filters:', filtersToUse);
+      
+      const response = await todoApi.getTodos(filtersToUse);
+      console.log('Todos fetched:', response);
+      
       dispatch({
         type: 'SET_TODOS',
         payload: {
@@ -141,25 +151,47 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       });
-    } catch (error) {
+      
+      if (!state.initialized) {
+        dispatch({ type: 'SET_INITIALIZED', payload: true });
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch todos:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to fetch todos' });
       toast({
         title: "Error",
-        description: "Failed to fetch todos",
+        description: "Failed to fetch todos. Please check your connection to the API.",
         variant: "destructive"
       });
     }
-  }, [state.filters, toast]);
+  }, []); // No dependencies to avoid cycle
+
+  // Auto-fetch on mount and filter changes
+  useEffect(() => {
+    fetchTodos(state.filters);
+  }, [state.filters.page, state.filters.size, state.filters.status, state.filters.priority, state.filters.search]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    if (!state.initialized) {
+      console.log('Initial todos fetch on component mount');
+      fetchTodos();
+    }
+  }, [fetchTodos]);
 
   const createTodo = useCallback(async (todo: TodoCreate) => {
     try {
+      console.log('Creating todo:', todo);
       const newTodo = await todoApi.createTodo(todo);
+      console.log('Todo created:', newTodo);
+      
       dispatch({ type: 'ADD_TODO', payload: newTodo });
       toast({
         title: "Success",
         description: "Todo created successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Failed to create todo:', error);
       toast({
         title: "Error",
         description: "Failed to create todo",
@@ -170,13 +202,17 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateTodo = useCallback(async (id: string, todo: TodoUpdate) => {
     try {
+      console.log('Updating todo:', id, todo);
       const updatedTodo = await todoApi.updateTodo(id, todo);
+      console.log('Todo updated:', updatedTodo);
+      
       dispatch({ type: 'UPDATE_TODO', payload: updatedTodo });
       toast({
         title: "Success",
         description: "Todo updated successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Failed to update todo:', error);
       toast({
         title: "Error",
         description: "Failed to update todo",
@@ -187,13 +223,15 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteTodo = useCallback(async (id: string) => {
     try {
+      console.log('Deleting todo:', id);
       await todoApi.deleteTodo(id);
       dispatch({ type: 'DELETE_TODO', payload: id });
       toast({
         title: "Success",
         description: "Todo deleted successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Failed to delete todo:', error);
       toast({
         title: "Error",
         description: "Failed to delete todo",
@@ -203,6 +241,7 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [toast]);
 
   const setFilters = useCallback((filters: FilterParams) => {
+    console.log('Setting filters:', filters);
     dispatch({ type: 'SET_FILTERS', payload: filters });
   }, []);
 
@@ -232,7 +271,8 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: "Success",
         description: `Updated ${state.selectedTodos.length} todos`
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Failed to bulk update todos:', error);
       toast({
         title: "Error",
         description: "Failed to update todos",
@@ -250,7 +290,8 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: "Success",
         description: `Deleted ${state.selectedTodos.length} todos`
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Failed to bulk delete todos:', error);
       toast({
         title: "Error",
         description: "Failed to delete todos",
