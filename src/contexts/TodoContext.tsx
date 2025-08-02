@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import { Todo, TodoCreate, TodoUpdate, FilterParams, ViewMode } from '../types/todo';
-import { todoApi } from '../services/api';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from './AuthContext';
 import { useToast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 
 interface TodoState {
   todos: Todo[];
@@ -127,27 +129,66 @@ export const useTodos = () => {
 
 export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(todoReducer, initialState);
-  const { toast } = useToast();
+  const { user } = useAuth();
 
-  // Stable fetchTodos function without dependency cycle
+  // Stable fetchTodos function using Supabase
   const fetchTodos = useCallback(async (customFilters?: FilterParams) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       const filtersToUse = customFilters || state.filters;
-      console.log('Fetching todos with filters:', filtersToUse);
       
-      const response = await todoApi.getTodos(filtersToUse);
-      console.log('Todos fetched:', response);
+      let query = supabase
+        .from('todos')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false });
+
+      // Apply filters
+      if (filtersToUse.status) {
+        query = query.eq('status', filtersToUse.status);
+      }
+      if (filtersToUse.priority) {
+        query = query.eq('priority', filtersToUse.priority);
+      }
+      if (filtersToUse.search) {
+        query = query.or(`title.ilike.%${filtersToUse.search}%,description.ilike.%${filtersToUse.search}%`);
+      }
+      if (filtersToUse.due_before) {
+        query = query.lte('due_date', filtersToUse.due_before);
+      }
+      if (filtersToUse.due_after) {
+        query = query.gte('due_date', filtersToUse.due_after);
+      }
+
+      // Apply pagination
+      const page = filtersToUse.page || 1;
+      const size = filtersToUse.size || 10;
+      const from = (page - 1) * size;
+      const to = from + size - 1;
       
+      query = query.range(from, to);
+
+      const { data: todos, error, count } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      const total = count || 0;
+      const total_pages = Math.ceil(total / size);
+
       dispatch({
         type: 'SET_TODOS',
         payload: {
-          todos: response.todos,
+          todos: (todos || []).map(todo => ({
+            ...todo,
+            status: todo.status as any,
+            priority: todo.priority as any
+          })),
           pagination: {
-            page: response.page,
-            size: response.size,
-            total: response.total,
-            total_pages: response.total_pages
+            page,
+            size,
+            total,
+            total_pages
           }
         }
       });
@@ -158,11 +199,7 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       console.error('Failed to fetch todos:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to fetch todos' });
-      toast({
-        title: "Error",
-        description: "Failed to fetch todos. Please check your connection to the API.",
-        variant: "destructive"
-      });
+      toast.error('Không thể tải danh sách công việc');
     }
   }, []); // No dependencies to avoid cycle
 
@@ -180,65 +217,66 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [fetchTodos]);
 
   const createTodo = useCallback(async (todo: TodoCreate) => {
+    if (!user) {
+      toast.error('Bạn cần đăng nhập để tạo công việc');
+      return;
+    }
+    
     try {
-      console.log('Creating todo:', todo);
-      const newTodo = await todoApi.createTodo(todo);
-      console.log('Todo created:', newTodo);
+      const { data, error } = await supabase
+        .from('todos')
+        .insert([{
+          ...todo,
+          user_id: user.id
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
       
-      dispatch({ type: 'ADD_TODO', payload: newTodo });
-      toast({
-        title: "Success",
-        description: "Todo created successfully"
-      });
+      dispatch({ type: 'ADD_TODO', payload: { ...data, status: data.status as any, priority: data.priority as any } });
+      toast.success('Tạo công việc thành công!');
     } catch (error: any) {
       console.error('Failed to create todo:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create todo",
-        variant: "destructive"
-      });
+      toast.error('Không thể tạo công việc');
     }
-  }, [toast]);
+  }, [user]);
 
   const updateTodo = useCallback(async (id: string, todo: TodoUpdate) => {
     try {
-      console.log('Updating todo:', id, todo);
-      const updatedTodo = await todoApi.updateTodo(id, todo);
-      console.log('Todo updated:', updatedTodo);
+      const { data, error } = await supabase
+        .from('todos')
+        .update(todo)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
       
-      dispatch({ type: 'UPDATE_TODO', payload: updatedTodo });
-      toast({
-        title: "Success",
-        description: "Todo updated successfully"
-      });
+      dispatch({ type: 'UPDATE_TODO', payload: { ...data, status: data.status as any, priority: data.priority as any } });
+      toast.success('Cập nhật công việc thành công!');
     } catch (error: any) {
       console.error('Failed to update todo:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update todo",
-        variant: "destructive"
-      });
+      toast.error('Không thể cập nhật công việc');
     }
-  }, [toast]);
+  }, []);
 
   const deleteTodo = useCallback(async (id: string) => {
     try {
-      console.log('Deleting todo:', id);
-      await todoApi.deleteTodo(id);
+      const { error } = await supabase
+        .from('todos')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
       dispatch({ type: 'DELETE_TODO', payload: id });
-      toast({
-        title: "Success",
-        description: "Todo deleted successfully"
-      });
+      toast.success('Xóa công việc thành công!');
     } catch (error: any) {
       console.error('Failed to delete todo:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete todo",
-        variant: "destructive"
-      });
+      toast.error('Không thể xóa công việc');
     }
-  }, [toast]);
+  }, []);
 
   const setFilters = useCallback((filters: FilterParams) => {
     console.log('Setting filters:', filters);
@@ -259,46 +297,39 @@ export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const bulkUpdateTodos = useCallback(async (status: string) => {
     try {
-      const updates = state.selectedTodos.reduce((acc, id) => {
-        acc[id] = { status: status as any };
-        return acc;
-      }, {} as Record<string, TodoUpdate>);
+      const { error } = await supabase
+        .from('todos')
+        .update({ status })
+        .in('id', state.selectedTodos);
+
+      if (error) throw error;
       
-      await todoApi.bulkUpdate(updates);
       await fetchTodos();
       setSelectedTodos([]);
-      toast({
-        title: "Success",
-        description: `Updated ${state.selectedTodos.length} todos`
-      });
+      toast.success(`Cập nhật ${state.selectedTodos.length} công việc thành công!`);
     } catch (error: any) {
       console.error('Failed to bulk update todos:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update todos",
-        variant: "destructive"
-      });
+      toast.error('Không thể cập nhật hàng loạt công việc');
     }
-  }, [state.selectedTodos, fetchTodos, setSelectedTodos, toast]);
+  }, [state.selectedTodos, fetchTodos, setSelectedTodos]);
 
   const bulkDeleteTodos = useCallback(async () => {
     try {
-      await Promise.all(state.selectedTodos.map(id => todoApi.deleteTodo(id)));
+      const { error } = await supabase
+        .from('todos')
+        .delete()
+        .in('id', state.selectedTodos);
+
+      if (error) throw error;
+      
       await fetchTodos();
       setSelectedTodos([]);
-      toast({
-        title: "Success",
-        description: `Deleted ${state.selectedTodos.length} todos`
-      });
+      toast.success(`Xóa ${state.selectedTodos.length} công việc thành công!`);
     } catch (error: any) {
       console.error('Failed to bulk delete todos:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete todos",
-        variant: "destructive"
-      });
+      toast.error('Không thể xóa hàng loạt công việc');
     }
-  }, [state.selectedTodos, fetchTodos, setSelectedTodos, toast]);
+  }, [state.selectedTodos, fetchTodos, setSelectedTodos]);
 
   return (
     <TodoContext.Provider
