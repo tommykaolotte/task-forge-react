@@ -1,10 +1,13 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, Sun, Moon, Search, Settings } from 'lucide-react';
+import { Plus, Sun, Moon, Search, Settings, LogOut, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTodos } from '../contexts/TodoContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface HeaderProps {
   onCreateTodo: () => void;
@@ -13,6 +16,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onCreateTodo }) => {
   const { theme, toggleTheme } = useTheme();
   const { viewMode } = useTodos();
+  const { user, signOut } = useAuth();
 
   const getViewTitle = () => {
     switch (viewMode) {
@@ -74,6 +78,31 @@ export const Header: React.FC<HeaderProps> = ({ onCreateTodo }) => {
               <Moon className="w-4 h-4" />
             )}
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center space-x-2 p-2">
+                <Avatar className="w-8 h-8">
+                  <AvatarFallback className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                    {user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  {user?.email?.split('@')[0] || 'User'}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>
+                <User className="w-4 h-4 mr-2" />
+                Hồ sơ
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={signOut}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Đăng xuất
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             onClick={onCreateTodo}

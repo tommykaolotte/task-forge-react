@@ -10,6 +10,7 @@ import { Header } from '../components/Header';
 import { TodoForm } from '../components/TodoForm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ViewMode } from '../types/todo';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
 const TodoApp: React.FC = () => {
   const {
@@ -96,9 +97,11 @@ const TodoApp: React.FC = () => {
 const Index = () => {
   return (
     <ThemeProvider>
-      <TodoProvider>
-        <TodoApp />
-      </TodoProvider>
+      <ProtectedRoute>
+        <TodoProvider>
+          <TodoApp />
+        </TodoProvider>
+      </ProtectedRoute>
     </ThemeProvider>
   );
 };
